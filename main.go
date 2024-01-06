@@ -19,6 +19,11 @@ const XMLPrefix = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
 const AtomType = "application/atom+xml"
 const HTMLType = "text/html"
 
+const campaignUrlTemplate = "https://www.patreon.com/api/campaigns/%d"
+const postsUrlTemplate = "https://www.patreon.com/api/posts?fields[post]=title,url,teaser_text,content,published_at&filter[campaign_id]=%d&filter[contains_exclusive_posts]=true&filter[is_draft]=false&sort=-published_at&json-api-version=1.0&json-api-use-default-includes=false"
+const searchUrlTemplate = "https://www.patreon.com/api/search?q=%s&page%5Bsize%5D=5&json-api-version=1.0&include=[]"
+
+
 type CampaignAPIResponse struct {
   Data struct {
     Attributes struct {
@@ -45,13 +50,15 @@ type PostAttributes struct {
 	URL   string
 }
 
-
+type SearchAPIResponse struct {
+  //TKTK
+}
 
 type Feed struct {
 	XMLName xml.Name `xml:"feed"`
   XMLNS   string `xml:"xmlns,attr"`
 
-  Author  string `xml:"author"` //nominally required by the spec, content todo
+  //Author  string `xml:"author"` //required by the spec, but blank is also wrong, so just leave it off for now
 	ID      string `xml:"id"`
 	Title   string `xml:"title"`
 	Updated string `xml:"updated"`
@@ -88,10 +95,12 @@ var testCampaignJSON []byte
 
 var campaignCache = expirable.NewLRU[int, *CampaignAPIResponse](1000, nil, 24*time.Hour)
 var postsCache = expirable.NewLRU[int, *PostsAPIResponse](1000, nil, 15*time.Minute)
+var searchCache = expirable.NewLRU[string, *SearchAPIResponse](1000, nil, 1*time.Hour)
 
 func main() {
 	http.HandleFunc("/", handleHome)
 	http.HandleFunc("/feed", handleFeed)
+  http.HandleFunc("/search", handleSearch)
 
 	log.Fatal(http.ListenAndServe(":8000", nil))
 }
@@ -110,13 +119,13 @@ func handleFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-  campaign, err := fetchCampaign(id)
+  campaign, err := fetchWithCache(campaignUrlTemplate, id, campaignCache)
 	if err != nil {
     fail(w, "fetch campaign", err)
     return
   }
-
-  posts, err := fetchPosts(id)
+  
+  posts, err := fetchWithCache(postsUrlTemplate, id, postsCache)
 	if err != nil {
     fail(w, "fetch posts", err)
 		return
@@ -124,8 +133,6 @@ func handleFeed(w http.ResponseWriter, r *http.Request) {
 
   entries := make([]FeedEntry, len(posts.Data))
   for idx, post := range posts.Data {
-    fmt.Printf("%+v\n\n", post.Attributes)
-
     fc := FeedContent{}
     if post.Attributes.Content != "" {
       fc.Type = "html"
@@ -206,6 +213,27 @@ func fetch(url string) ([]byte, error) {
   return body, nil
 }
 
+func fetchWithCache[K comparable, S any](urlTemplate string, key K, cache *expirable.LRU[K, *S]) (*S, error) {
+  s, ok := cache.Get(key)
+  if ok {
+    return s, nil
+  }
+
+  body, err := fetch(fmt.Sprintf(urlTemplate, key))
+  if err != nil {
+    return nil, err
+  }
+
+  s = new(S)
+  err = json.Unmarshal(body, s)
+  if err != nil {
+    return nil, err
+  }
+
+  cache.Add(key, s)
+  return s, nil
+}
+
 func fetchCampaign(id int) (*CampaignAPIResponse, error) {
   campaign, ok := campaignCache.Get(id)
   if ok {
@@ -256,3 +284,8 @@ func fail(w http.ResponseWriter, context string, err error) {
   w.WriteHeader(500)
   io.WriteString(w, fmt.Sprintf("internal error: %s: %v", context, err))
 }
+
+func handleSearch(w http.ResponseWriter, r *http.Request) {
+
+}
+
