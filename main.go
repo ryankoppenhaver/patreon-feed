@@ -144,7 +144,7 @@ func main() {
 
 	router.SetTrustedProxies(nil)
 
-	router.Run(":8000")
+	router.Run(":8080")
 }
 
 func formatJSONLog(p gin.LogFormatterParams) string {
