@@ -27,6 +27,8 @@ const campaignUrlTemplate = "https://www.patreon.com/api/campaigns/%d"
 const postsUrlTemplate = "https://www.patreon.com/api/posts?fields[post]=title,url,teaser_text,content,published_at&filter[campaign_id]=%d&filter[contains_exclusive_posts]=true&filter[is_draft]=false&sort=-published_at&json-api-version=1.0&json-api-use-default-includes=false"
 const searchUrlTemplate = "https://www.patreon.com/api/search?q=%s&page%%5Bsize%%5D=5&json-api-version=1.0&include=[]"
 
+var httpClient = &http.Client{}
+
 type CampaignAPIResponse struct {
 	Data struct {
 		Attributes struct {
@@ -285,7 +287,14 @@ func fullURL(r *http.Request) *url.URL {
 }
 
 func fetch(url string) ([]byte, error) {
-	resp, err := http.Get(url)
+  req, err := http.NewRequest(http.MethodGet, url, nil)
+  if err != nil {
+    return nil, fmt.Errorf("new request: %w", err)
+  }
+
+  req.Header.Add("User-Agent", "https://github.com/ryankoppenhaver/patreon-feed")
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("get %s: %w", url, err)
 	}
