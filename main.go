@@ -104,6 +104,8 @@ type Link struct{
 
 //go:embed home.html
 var homeHTML string
+//go:embed htm-preact-standalone.mjs
+var htmJS string
 
 var campaignCache = expirable.NewLRU[int, *CampaignAPIResponse](1000, nil, 24*time.Hour)
 var postsCache = expirable.NewLRU[int, *PostsAPIResponse](1000, nil, 15*time.Minute)
@@ -122,6 +124,10 @@ func main() {
   router.Use(gin.Recovery())
     
   router.GET("/", handleHome)
+  router.GET("/htm-preact-standalone.mjs", func(c *gin.Context) { 
+    c.Writer.Header().Set("Content-Type", "application/javascript")
+    c.String(200, "%s", htmJS)
+  })
   router.GET("/feed/:id", handleFeed)
   router.GET("/search", handleSearch)
 
@@ -145,8 +151,6 @@ func handleSearch(c *gin.Context) {
 
   results := SearchAPIResponse{}
   err := json.Unmarshal(test, &results)
-
-  fmt.Printf("%+v\n", results)
 
   //results, err := fetchWithCache(searchUrlTemplate, url.QueryEscape(q), searchCache)
   if err != nil {

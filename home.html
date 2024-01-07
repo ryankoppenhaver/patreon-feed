@@ -1,55 +1,183 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<title></title>
-</head>
-<body>
-<main>
-<p>This app scrapes Patreon creator pages to generate syndication feeds for your RSS reader of choice.</p>
-<form id="searchForm">
-Search for a creator:
-<input id="q" />
-<button type="submit">search</button>
-</form>
-
-<div id="results"></div>
-
-<template id="resultTemplate">
-  <div>
-</template>
-
-<script type="module">
-  import { html, render } from 'https://esm.sh/htm/preact/standalone'
-
-  const Result = ({name, desc, id, url}) => html`
-    <div>${name} - ${desc} - <a href=${url}>view on Patreon</a> - <a href="/feed/${id}">feed link</a></div>
-  `
-  async function doSearch(evt) {
-    evt.preventDefault()
-    const resDiv = document.getElementById('results')
-    resDiv.innerHTML = ''
-
-    const q = encodeURIComponent(document.getElementById('q').value)
-    const res = await fetch(`/search?q=${q}`)
-
-    if (!res.ok) {
-      console.log(res)
-      resDiv.innerText = `search error ${res.status}: ${await res.text()}`
-      return
+  <title>Unofficial Patreon Feed Maker</title>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
     }
 
-    results = await res.json()
+    html {
+      font-family: sans-serif;
+      height: 100%;
+    }
+    body {
+      background: #cccccc;
+      height: 100%;
 
-    render(results.map(Result), resDiv)
-  }
+      line-height: 1.5;
+    }
+    main {
+      margin-left: auto;
+      margin-right: auto;
+      padding: 1em;
+      min-height: 90%;
+      max-width: 120ex;
+      background: #fff;
+    }
 
+    .results {
+      padding-left: inherit;
+    }
 
-  document.getElementById('searchForm').addEventListener('submit', doSearch)
-</script>
+    .results > li {
+      border: 1px solid gray;
+      margin: 1ex;
+      padding: 1ex;
+      list-style: none;
 
+      zzdisplay: grid;
+      grid-template-areas:
+        'n p'
+        'n f'
+        'd f';
+    }
 
+    .results > li > .name {
+      font-size: 130%;
+      font-weight: bold;
+      grid-area: n;
+    }
 
+    .results > li > .desc {
+      grid-area: d;
+    }
 
-</main>
+    .results > li > .url {
+      grid-area: p;
+    }
+
+    .results > li > .feed {
+    }
+
+    .results > li > div {
+      zzborder: 1px solid gray;
+      zzpadding: .5ex
+      zzmargin: .5ex
+    }
+
+    /* TODO: can we remove this by using a different layout model to prevent triple-click-select outside the code element?  */
+    div.no-select { 
+      user-select: none;
+      display: inline;
+    }
+
+    .feed {
+    }
+
+    .feed code {
+      display: inline-block;
+      margin-top: 1em;
+      border: 1px solid gray;
+      padding: .8ex 1.5ex;
+      background: peach;
+      color: red;
+      box-shadow: 1px 1px 1px #333 inset;
+      user-select: all;
+    }
+
+    .feed > button {
+      margin-left: 1em;
+      margin-right: 1em;
+    }
+
+    #errors {
+      font-weight: bold;
+      color: red;
+    }
+
+  </style>
+</head>
+
+<body>
+  <main>
+    <p>This app scrapes Patreon creator pages to generate syndication feeds for your RSS reader of choice.</p>
+    <noscript>Sorry, the search functionality requires Javascript.</noscript>
+
+    <section>
+      <h1>Search for a creator</h1>
+
+      <search>
+        <form id="searchForm">
+          <label for=query>Search:</label>
+          <input name=query id="q" />
+          <button type="submit">search</button>
+        </form>
+      </search>
+    </section>
+
+    <section>
+      <h1>Results</h1>
+      <div id="errors"></div>
+      <div id="results"></div>
+    </section>
+
+    <section>
+      <h1>About</h1>
+      <p> lorem ipsum dolor sit amet.</p>
+    </section>
+  </main>
+
+  <script type="module">
+    import { html, render } from '/htm-preact-standalone.mjs'
+
+    const resDiv = document.getElementById('results')
+    const errDiv = document.getElementById('errors')
+
+    const Result = ({name, desc, id, url}) => {
+      const feedURL = new URL(`/feed/${id}`, document.baseURI).href
+      return(html`
+        <li>
+          <div class=name>${name}</div>
+          <div class=desc>${desc}</div>
+          <div class=url><a href=${url}>view on Patreon</a></div>
+          <div class="feed no-select">
+            <span>Feed: </span>
+            <code>${feedURL}</code>
+            <button onclick=${() => navigator.clipboard.writeText(feedURL)}>Copy</button>
+            <a href="${feedURL}">Link</a>
+          </div>
+        </li>
+      `)
+    }
+
+    async function doSearch(evt) {
+      evt.preventDefault()
+      resDiv.innerHTML = ''
+      errDiv.innerHTML = ''
+
+      const q = encodeURIComponent(document.getElementById('q').value)
+      const res = await fetch(`/search?q=${q}`)
+
+      if (!res.ok) {
+        console.log(res)
+        errDiv.innerText = `search error ${res.status}: ${await res.text()}`
+        return
+      }
+
+      const results = await res.json()
+
+      if (results.length == 0) {
+        errDiv.innerText = `Sorry, there were no results for that search.`
+      }
+
+      const content = html`<ul class=results> ${results.map(Result)} </ul>`
+      render(content, resDiv)
+    }
+
+    document.getElementById('searchForm').addEventListener('submit', doSearch)
+  </script>
 </body>
 </html>
