@@ -1,7 +1,45 @@
-<!html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<title>TKTK</title>
+<title></title>
 </head>
 <body>
-hello  world
+<main>
+<p>This app scrapes Patreon creator pages to generate RSS feeds:</p>
+<form id="searchForm">
+Search for a creator:
+<input id="q" />
+<button type="submit">search</button>
+</form>
+
+<div id="results">
+
+
+<script>
+  async function doSearch(evt) {
+    evt.preventDefault()
+    const resDiv = document.getElementById('results')
+    resDiv.innerHTML = ''
+
+    const q = encodeURIComponent(document.getElementById('q').value)
+    const res = await fetch(`/search?q=${q}`)
+
+    if (!res.ok) {
+      console.log(res)
+      resDiv.innerText = `search error ${res.status}: ${await res.text()}`
+      return
+    }
+
+    console.log(await res.json())
+  }
+
+
+  document.getElementById('searchForm').addEventListener('submit', doSearch)
+</script>
+
+
+
+
+</main>
 </body>
+</html>

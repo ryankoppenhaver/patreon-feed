@@ -114,8 +114,13 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
     return
   }
 
-  // TODO NEXT - return results (re-marshal or just pass through?)
-  
+  out, err := json.Marshal(results)
+  if err != nil {
+    fail(w, "marshal", err)
+    return
+  }
+
+  w.Write(out) //todo err
 }
 
 
