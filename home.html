@@ -5,17 +5,25 @@
 </head>
 <body>
 <main>
-<p>This app scrapes Patreon creator pages to generate RSS feeds:</p>
+<p>This app scrapes Patreon creator pages to generate syndication feeds for your RSS reader of choice.</p>
 <form id="searchForm">
 Search for a creator:
 <input id="q" />
 <button type="submit">search</button>
 </form>
 
-<div id="results">
+<div id="results"></div>
 
+<template id="resultTemplate">
+  <div>
+</template>
 
-<script>
+<script type="module">
+  import { html, render } from 'https://esm.sh/htm/preact/standalone'
+
+  const Result = ({name, desc, id, url}) => html`
+    <div>${name} - ${desc} - <a href=${url}>view on Patreon</a> - <a href="/feed/${id}">feed link</a></div>
+  `
   async function doSearch(evt) {
     evt.preventDefault()
     const resDiv = document.getElementById('results')
@@ -30,7 +38,9 @@ Search for a creator:
       return
     }
 
-    console.log(await res.json())
+    results = await res.json()
+
+    render(results.map(Result), resDiv)
   }
 
 

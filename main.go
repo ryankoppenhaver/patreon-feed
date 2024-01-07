@@ -4,14 +4,17 @@ import (
 	_ "embed"
 	"encoding/json"
 	"encoding/xml"
+  "fmt"
 	"io"
-	"log"
+  "log/slog"
 	"net/http"
   "net/url"
+  "os"
+  "regexp"
 	"strconv"
 	"time"
-  "fmt"
 
+  "github.com/gin-gonic/gin"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 )
 
@@ -21,7 +24,7 @@ const HTMLType = "text/html"
 
 const campaignUrlTemplate = "https://www.patreon.com/api/campaigns/%d"
 const postsUrlTemplate = "https://www.patreon.com/api/posts?fields[post]=title,url,teaser_text,content,published_at&filter[campaign_id]=%d&filter[contains_exclusive_posts]=true&filter[is_draft]=false&sort=-published_at&json-api-version=1.0&json-api-use-default-includes=false"
-const searchUrlTemplate = "https://www.patreon.com/api/search?q=%s&page%5Bsize%5D=5&json-api-version=1.0&include=[]"
+const searchUrlTemplate = "https://www.patreon.com/api/search?q=%s&page%%5Bsize%%5D=5&json-api-version=1.0&include=[]"
 
 
 type CampaignAPIResponse struct {
@@ -51,7 +54,21 @@ type PostAttributes struct {
 }
 
 type SearchAPIResponse struct {
-  //TKTK
+  Data []struct {
+    Attributes struct {
+      CreatorName string `json:"creator_name"`
+      CreationName string `json:"creation_name"`
+      URL string
+    }
+    ID string `json:"id"`
+  }
+}
+
+type FrontendSearchResult struct {
+  Name string `json:"name"`
+  Desc string `json:"desc"`
+  ID string `json:"id"`
+  URL string `json:"url"`
 }
 
 type Feed struct {
@@ -93,55 +110,85 @@ var postsCache = expirable.NewLRU[int, *PostsAPIResponse](1000, nil, 15*time.Min
 var searchCache = expirable.NewLRU[string, *SearchAPIResponse](1000, nil, 1*time.Hour)
 
 func main() {
-	http.HandleFunc("/", handleHome)
-	http.HandleFunc("/feed", handleFeed)
-  http.HandleFunc("/search", handleSearch)
+  //todo prod config
+  slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+    Level: slog.LevelDebug,
+  })))
 
-	log.Fatal(http.ListenAndServe(":8000", nil))
+  router := gin.New()
+  router.Use(gin.LoggerWithConfig(gin.LoggerConfig{
+    SkipPaths: []string{"/favicon.ico"},
+  }))
+  router.Use(gin.Recovery())
+    
+  router.GET("/", handleHome)
+  router.GET("/feed/:id", handleFeed)
+  router.GET("/search", handleSearch)
+
+  router.SetTrustedProxies(nil)
+
+  router.Run(":8000")
 }
 
-func handleHome(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	io.WriteString(w, homeHTML)
+func handleHome(c *gin.Context) {
+	c.Writer.Header().Set("Content-Type", "text/html")
+	io.WriteString(c.Writer, homeHTML)
 }
 
-func handleSearch(w http.ResponseWriter, r *http.Request) {
-  q := r.URL.Query().Get("q")
+//go:embed search1.json
+var test []byte
 
-  results, err := fetchWithCache(searchUrlTemplate, url.QueryEscape(q), searchCache)
+var campaignIDPattern = regexp.MustCompile(`^campaign_(\d+)$`)
+
+func handleSearch(c *gin.Context) {
+  //q := c.Query("q")
+
+  results := SearchAPIResponse{}
+  err := json.Unmarshal(test, &results)
+
+  fmt.Printf("%+v\n", results)
+
+  //results, err := fetchWithCache(searchUrlTemplate, url.QueryEscape(q), searchCache)
   if err != nil {
-    fail(w, "search", err)
+    fail(c, "search", err)
     return
   }
 
-  out, err := json.Marshal(results)
-  if err != nil {
-    fail(w, "marshal", err)
-    return
+  res := make([]FrontendSearchResult, len(results.Data))
+  for idx, item := range results.Data {
+    matches := campaignIDPattern.FindStringSubmatch(item.ID)
+    if matches == nil || len(matches) < 2 {
+      fail(c, "search results", fmt.Errorf("bad id: %s", item.ID))
+    }
+
+    res[idx].Name = item.Attributes.CreatorName
+    res[idx].Desc = item.Attributes.CreationName
+    res[idx].ID = matches[1]
+    res[idx].URL = item.Attributes.URL
   }
 
-  w.Write(out) //todo err
+  c.JSON(200, res)
 }
 
 
-func handleFeed(w http.ResponseWriter, r *http.Request) {
-	id, _ := strconv.Atoi(r.URL.Query().Get("id"))
+func handleFeed(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
 
 	if id == 0 {
-		w.WriteHeader(400)
-		io.WriteString(w, "bad/missing param: id")
+		c.Writer.WriteHeader(400)
+		io.WriteString(c.Writer, "bad id")
 		return
 	}
 
   campaign, err := fetchWithCache(campaignUrlTemplate, id, campaignCache)
 	if err != nil {
-    fail(w, "fetch campaign", err)
+    fail(c, "fetch campaign", err)
     return
   }
   
   posts, err := fetchWithCache(postsUrlTemplate, id, postsCache)
 	if err != nil {
-    fail(w, "fetch posts", err)
+    fail(c, "fetch posts", err)
 		return
 	}
 
@@ -170,7 +217,7 @@ func handleFeed(w http.ResponseWriter, r *http.Request) {
 
 	feed := Feed{
     XMLNS: "http://www.w3.org/2005/Atom",
-		ID: fullURL(r).String(),
+		ID: fullURL(c.Request).String(),
     Title: fmt.Sprintf("Patreon: %s", campaign.Data.Attributes.Name),
     Link: []Link{{
       Rel: "alternate",
@@ -179,7 +226,7 @@ func handleFeed(w http.ResponseWriter, r *http.Request) {
     }, {
       Rel: "self",
       Type: AtomType,
-      HRef: fullURL(r).String(),
+      HRef: fullURL(c.Request).String(),
     }},
     Updated: time.Now().UTC().Format(time.RFC3339),
 		Entries: entries,
@@ -187,12 +234,12 @@ func handleFeed(w http.ResponseWriter, r *http.Request) {
 
 	out, err := xml.MarshalIndent(feed, "", "  ")
 	if err != nil {
-    fail(w, "marshal", err)
+    fail(c, "marshal", err)
 		return
 	}
 
-  io.WriteString(w, XMLPrefix)
-	w.Write(out) //todo err
+  io.WriteString(c.Writer, XMLPrefix)
+	c.Writer.Write(out) //todo err
 }
 
 func fullURL(r *http.Request) *url.URL {
@@ -216,6 +263,7 @@ func fetch(url string) ([]byte, error) {
   defer resp.Body.Close()
   body, err := io.ReadAll(resp.Body)
 
+
   if err != nil {
     return nil, fmt.Errorf("get %s: read body: %v", err)
   }
@@ -224,14 +272,19 @@ func fetch(url string) ([]byte, error) {
     return nil, fmt.Errorf("get %s: status %s: %s", url, resp.Status, string(body))
   }
 
+  slog.Debug("fetched", "url", url, "res body", string(body))
+
   return body, nil
 }
 
 func fetchWithCache[K comparable, S any](urlTemplate string, key K, cache *expirable.LRU[K, *S]) (*S, error) {
   s, ok := cache.Get(key)
   if ok {
+    slog.Debug("cache hit", "key", key)
     return s, nil
   }
+
+  slog.Debug("cache miss", "key", key)
 
   body, err := fetch(fmt.Sprintf(urlTemplate, key))
   if err != nil {
@@ -248,8 +301,8 @@ func fetchWithCache[K comparable, S any](urlTemplate string, key K, cache *expir
   return s, nil
 }
 
-func fail(w http.ResponseWriter, context string, err error) {
-  w.WriteHeader(500)
-  io.WriteString(w, fmt.Sprintf("internal error: %s: %v", context, err))
+func fail(c *gin.Context, context string, err error) {
+  c.Writer.WriteHeader(500)
+  io.WriteString(c.Writer, fmt.Sprintf("internal error: %s: %v", context, err))
 }
 
