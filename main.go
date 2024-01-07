@@ -111,13 +111,21 @@ var postsCache = expirable.NewLRU[int, *PostsAPIResponse](1000, nil, 15*time.Min
 var searchCache = expirable.NewLRU[string, *SearchAPIResponse](1000, nil, 1*time.Hour)
 
 func main() {
-  //todo prod config
-  slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-    Level: slog.LevelDebug,
-  })))
+  
+  var logFormatter gin.LogFormatter
+
+  if gin.Mode() == gin.DebugMode {
+    slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+      Level: slog.LevelDebug,
+    })))
+  } else {
+    slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+    logFormatter = formatJSONLog
+  }
 
   router := gin.New()
   router.Use(gin.LoggerWithConfig(gin.LoggerConfig{
+    Formatter: logFormatter,
     SkipPaths: []string{"/favicon.ico"},
   }))
   router.Use(gin.Recovery())
@@ -134,6 +142,25 @@ func main() {
 
   router.Run(":8000")
 }
+
+func formatJSONLog(p gin.LogFormatterParams) string {
+  b, err := json.Marshal(gin.H{
+    "time": p.TimeStamp,
+    "level": "INFO",
+    "method": p.Method,
+    "path": p.Path,
+    "status": p.StatusCode,
+    "duration": p.Latency,
+    "size": p.BodySize,
+    "error": p.ErrorMessage,
+  })
+  if err != nil {
+    slog.Error("failed to marshal request log", "error", err)
+    return fmt.Sprintf("unmarshalable: %+v : %v\n", p, err)
+  }
+  return fmt.Sprintf("%s\n", b)
+}
+
 
 func handleHome(c *gin.Context) {
 	c.Writer.Header().Set("Content-Type", "text/html")
