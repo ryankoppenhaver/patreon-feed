@@ -26,7 +26,6 @@ const campaignUrlTemplate = "https://www.patreon.com/api/campaigns/%d"
 const postsUrlTemplate = "https://www.patreon.com/api/posts?fields[post]=title,url,teaser_text,content,published_at&filter[campaign_id]=%d&filter[contains_exclusive_posts]=true&filter[is_draft]=false&sort=-published_at&json-api-version=1.0&json-api-use-default-includes=false"
 const searchUrlTemplate = "https://www.patreon.com/api/search?q=%s&page%%5Bsize%%5D=5&json-api-version=1.0&include=[]"
 
-
 type CampaignAPIResponse struct {
   Data struct {
     Attributes struct {
@@ -141,18 +140,11 @@ func handleHome(c *gin.Context) {
 	io.WriteString(c.Writer, homeHTML)
 }
 
-//go:embed search1.json
-var test []byte
-
 var campaignIDPattern = regexp.MustCompile(`^campaign_(\d+)$`)
 
 func handleSearch(c *gin.Context) {
-  //q := c.Query("q")
-
-  results := SearchAPIResponse{}
-  err := json.Unmarshal(test, &results)
-
-  //results, err := fetchWithCache(searchUrlTemplate, url.QueryEscape(q), searchCache)
+  q := c.Query("q")
+  results, err := fetchWithCache(searchUrlTemplate, url.QueryEscape(q), searchCache)
   if err != nil {
     fail(c, "search", err)
     return
@@ -243,7 +235,12 @@ func handleFeed(c *gin.Context) {
 	}
 
   io.WriteString(c.Writer, XMLPrefix)
-	c.Writer.Write(out) //todo err
+	_, err = c.Writer.Write(out)
+  if err != nil {
+    // this is what gin's Render methods do
+    c.Error(err)
+    c.Abort()
+  }
 }
 
 func fullURL(r *http.Request) *url.URL {
