@@ -16,6 +16,7 @@ import (
 
   "github.com/gin-gonic/gin"
 	"github.com/hashicorp/golang-lru/v2/expirable"
+  "github.com/prometheus/client_golang/prometheus"
 )
 
 const XMLPrefix = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
@@ -122,6 +123,8 @@ func main() {
     slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
     logFormatter = formatJSONLog
   }
+
+  slog.Info("application start")
 
   router := gin.New()
   router.Use(gin.LoggerWithConfig(gin.LoggerConfig{
@@ -291,7 +294,6 @@ func fetch(url string) ([]byte, error) {
   defer resp.Body.Close()
   body, err := io.ReadAll(resp.Body)
 
-
   if err != nil {
     return nil, fmt.Errorf("get %s: read body: %v", err)
   }
@@ -307,6 +309,7 @@ func fetch(url string) ([]byte, error) {
 
 func fetchWithCache[K comparable, S any](urlTemplate string, key K, cache *expirable.LRU[K, *S]) (*S, error) {
   s, ok := cache.Get(key)
+  cacheChecks.With(prometheus.Labels{"type" : fmt.Sprintf("%T", *new(S)), "hit": strconv.FormatBool(ok)}).Inc()
   if ok {
     slog.Debug("cache hit", "key", key)
     return s, nil
