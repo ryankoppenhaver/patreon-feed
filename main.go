@@ -153,6 +153,7 @@ func formatJSONLog(p gin.LogFormatterParams) string {
 	b, err := json.Marshal(gin.H{
 		"time":     p.TimeStamp,
 		"level":    "INFO",
+		"remote":   p.Request.RemoteAddr,
 		"method":   p.Method,
 		"path":     p.Path,
 		"status":   p.StatusCode,
@@ -287,12 +288,12 @@ func fullURL(r *http.Request) *url.URL {
 }
 
 func fetch(url string) ([]byte, error) {
-  req, err := http.NewRequest(http.MethodGet, url, nil)
-  if err != nil {
-    return nil, fmt.Errorf("new request: %w", err)
-  }
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("new request: %w", err)
+	}
 
-  req.Header.Add("User-Agent", "https://github.com/ryankoppenhaver/patreon-feed")
+	req.Header.Add("User-Agent", "https://github.com/ryankoppenhaver/patreon-feed")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
