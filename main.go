@@ -233,7 +233,7 @@ func handleFeed(c *gin.Context) {
 		}
 
 		entries[idx] = FeedEntry{
-      Id: post.Attributes.URL,
+      ID: post.Attributes.URL,
 			Title:   post.Attributes.Title,
 			Content: fc,
 			Link: Link{
